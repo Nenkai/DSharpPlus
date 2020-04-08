@@ -198,14 +198,14 @@ namespace DSharpPlus.CommandsNext
             if (mpos == -1)
                 return;
 
-            var pfx = e.Message.Content.Substring(0, mpos);
-            var cnt = e.Message.Content.Substring(mpos);
+            ReadOnlyMemory<char> pfx = e.Message.Content.AsMemory().Slice(0, mpos);
+            ReadOnlyMemory<char> cnt = e.Message.Content.AsMemory().Slice(mpos);
 
             var __ = 0;
             var fname = cnt.ExtractNextArgument(ref __);
 
-            var cmd = this.FindCommand(cnt, out var args);
-            var ctx = this.CreateContext(e.Message, pfx, cmd, args);
+            var cmd = this.FindCommand(cnt, out string args);
+            var ctx = this.CreateContext(e.Message, pfx.ToString(), cmd, args);
             if (cmd == null)
             {
                 await this._error.InvokeAsync(new CommandErrorEventArgs { Context = ctx, Exception = new CommandNotFoundException(fname) }).ConfigureAwait(false);
@@ -213,6 +213,7 @@ namespace DSharpPlus.CommandsNext
             }
 
             _ = Task.Run(async () => await this.ExecuteCommandAsync(ctx));
+
         }
 
         /// <summary>
@@ -221,10 +222,9 @@ namespace DSharpPlus.CommandsNext
         /// <param name="commandString">Qualified name of the command, optionally with arguments.</param>
         /// <param name="rawArguments">Separated arguments.</param>
         /// <returns>Found command or null if none was found.</returns>
-        public Command FindCommand(string commandString, out string rawArguments)
+        public Command FindCommand(ReadOnlyMemory<char> commandString, out string rawArguments)
         {
             rawArguments = null;
-
             var ignoreCase = !this.Config.CaseSensitive;
             var pos = 0;
             var next = commandString.ExtractNextArgument(ref pos);
@@ -246,7 +246,7 @@ namespace DSharpPlus.CommandsNext
 
             if (!(cmd is CommandGroup))
             {
-                rawArguments = commandString.Substring(pos).Trim();
+                rawArguments = commandString.Span.Slice(pos).Trim().ToString();
                 return cmd;
             }
             
@@ -276,7 +276,7 @@ namespace DSharpPlus.CommandsNext
                 }
             }
 
-            rawArguments = commandString.Substring(pos).Trim();
+            rawArguments = commandString.Span.Slice(pos).Trim().ToString();
             return cmd;
         }
 

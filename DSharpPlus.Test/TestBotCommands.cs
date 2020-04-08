@@ -28,7 +28,7 @@ namespace DSharpPlus.Test
 		[Command("sudo"), Description("Run a command as another user."), Hidden, RequireOwner]
 		public async Task SudoAsync(CommandContext ctx, DiscordUser user, [RemainingText] string content)
 		{
-            var cmd = ctx.CommandsNext.FindCommand(content, out var args);
+            var cmd = ctx.CommandsNext.FindCommand(content.AsMemory(), out var args);
             var fctx = ctx.CommandsNext.CreateFakeContext(user, ctx.Channel, content, ctx.Prefix, cmd, args);
             await ctx.CommandsNext.ExecuteCommandAsync(fctx).ConfigureAwait(false);
 		}

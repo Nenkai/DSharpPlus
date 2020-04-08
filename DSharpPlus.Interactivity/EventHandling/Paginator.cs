@@ -124,7 +124,7 @@ namespace DSharpPlus.Interactivity.EventHandling
             var msg = await p.GetMessageAsync();
             var emojis = await p.GetEmojisAsync();
 
-            await msg.DeleteAllReactionsAsync("Pagination");
+            //await msg.DeleteAllReactionsAsync("Pagination");
 
             if (emojis.SkipLeft != null)
                 await msg.CreateReactionAsync(emojis.SkipLeft);

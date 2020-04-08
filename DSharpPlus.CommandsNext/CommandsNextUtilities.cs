@@ -68,9 +68,9 @@ namespace DSharpPlus.CommandsNext
         }
 
         //internal static string ExtractNextArgument(string str, out string remainder)
-        internal static string ExtractNextArgument(this string str, ref int startPos)
+        internal static string ExtractNextArgument(this ReadOnlyMemory<char> str, ref int startPos)
         {
-            if (string.IsNullOrWhiteSpace(str))
+            if (str.IsEmpty || str.Span.IsWhiteSpace())
                 return null;
 
             var inBacktick = false;
@@ -81,7 +81,7 @@ namespace DSharpPlus.CommandsNext
 
             var i = startPos;
             for (; i < str.Length; i++)
-                if (!char.IsWhiteSpace(str[i]))
+                if (!char.IsWhiteSpace(str.Span[i]))
                     break;
             startPos = i;
 
@@ -89,19 +89,19 @@ namespace DSharpPlus.CommandsNext
             var startPosition = startPos;
             for (i = startPosition; i < str.Length; i++)
             {
-                if (char.IsWhiteSpace(str[i]) && !inQuote && !inTripleBacktick && !inBacktick && !inEscape)
+                if (char.IsWhiteSpace(str.Span[i]) && !inQuote && !inTripleBacktick && !inBacktick && !inEscape)
                     endPosition = i;
 
-                if (str[i] == '\\')
+                if (str.Span[i] == '\\')
                 {
                     if (!inEscape && !inBacktick && !inTripleBacktick)
                     {
                         inEscape = true;
-                        if (str.IndexOf("\\`", i) == i || str.IndexOf("\\\"", i) == i || str.IndexOf("\\\\", i) == i || (str.Length >= i && char.IsWhiteSpace(str[i + 1])))
+                        if (str.Span.IndexOf("\\`", i) == i || str.Span.IndexOf("\\\"", i) == i || str.Span.IndexOf("\\\\", i) == i || (str.Length >= i && char.IsWhiteSpace(str.Span[i + 1])))
                             removeIndices.Add(i - startPosition);
                         i++;
                     }
-                    else if ((inBacktick || inTripleBacktick) && str.IndexOf("\\`", i) == i)
+                    else if ((inBacktick || inTripleBacktick) && str.Span.IndexOf("\\`", i) == i)
                     {
                         inEscape = true;
                         removeIndices.Add(i - startPosition);
@@ -109,9 +109,9 @@ namespace DSharpPlus.CommandsNext
                     }
                 }
 
-                if (str[i] == '`' && !inEscape)
+                if (str.Span[i] == '`' && !inEscape)
                 {
-                    var tripleBacktick = str.IndexOf("```", i) == i;
+                    var tripleBacktick = str.Span.IndexOf("```", i) == i;
                     if (inTripleBacktick && tripleBacktick)
                     {
                         inTripleBacktick = false;
@@ -129,7 +129,7 @@ namespace DSharpPlus.CommandsNext
                         inBacktick = true;
                 }
 
-                if (str[i] == '"' && !inEscape && !inBacktick && !inTripleBacktick)
+                if (str.Span[i] == '"' && !inEscape && !inBacktick && !inTripleBacktick)
                 {
                     removeIndices.Add(i - startPosition);
 
@@ -146,23 +146,37 @@ namespace DSharpPlus.CommandsNext
                 {
                     startPos = endPosition;
                     if (startPosition != endPosition)
-                        return str.Substring(startPosition, endPosition - startPosition).CleanupString(removeIndices);
+                        return str.Slice(startPosition, endPosition - startPosition).ToString().CleanupString(removeIndices);
                     return null;
                 }
             }
 
             startPos = str.Length;
             if (startPos != startPosition)
-                return str.Substring(startPosition).CleanupString(removeIndices);
+                return str.Slice(startPosition).ToString().CleanupString(removeIndices);
             return null;
+        }
+
+        internal static int IndexOf(this ReadOnlySpan<char> str, string indexStr, int startIndex)
+        {
+            int currentMatch = 0;
+            for (int i = startIndex; i < str.Length; i++)
+            {
+                if (str[i] == indexStr[currentMatch])
+                    if (++currentMatch == str.Length) return i - currentMatch;
+                else
+                    currentMatch = 0;
+            }
+
+            return -1;
         }
 
         internal static string CleanupString(this string s, IList<int> indices)
         {
-            if (!indices.Any())
+            if (indices.Count == 0)
                 return s;
 
-            var li = indices.Last();
+            var li = indices[indices.Count -1];
             var ll = 1;
             for (var x = indices.Count - 2; x >= 0; x--)
             {
@@ -201,7 +215,7 @@ namespace DSharpPlus.CommandsNext
                     {
                         while (true)
                         {
-                            argValue = ExtractNextArgument(argString, ref foundAt);
+                            argValue = ExtractNextArgument(argString.AsMemory(), ref foundAt);
                             if (argValue == null)
                                 break;
                             
@@ -225,7 +239,7 @@ namespace DSharpPlus.CommandsNext
                 }
                 else
                 {
-                    argValue = ExtractNextArgument(argString, ref foundAt);
+                    argValue = ExtractNextArgument(argString.AsMemory(), ref foundAt);
                     rawArgumentList.Add(argValue);
                 }
 

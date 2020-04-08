@@ -75,6 +75,8 @@ namespace DSharpPlus.Interactivity
 
         private ReactionCollector ReactionCollector;
 
+        private ReactionListener ReactionListener;
+
         private Poller Poller;
 
         private Paginator Paginator;
@@ -92,6 +94,7 @@ namespace DSharpPlus.Interactivity
             this.TypingStartWaiter = new EventWaiter<TypingStartEventArgs>(this.Client);
             this.Poller = new Poller(this.Client);
             this.ReactionCollector = new ReactionCollector(this.Client);
+            this.ReactionListener = new ReactionListener(this.Client);
             this.Paginator = new Paginator(this.Client);
         }
 
@@ -274,6 +277,20 @@ namespace DSharpPlus.Interactivity
                 var res = await waiter.CollectMatches(new CollectRequest<T>(predicate, timeout));
                 return res;
             }
+        }
+
+        /// <summary>
+        /// Wait for a reaction add/remove from a speficic user and message.
+        /// </summary>
+        /// <param name="m">Message to collect reactions on.</param>
+        /// <param name="u">User to listen to.</param>
+        /// <param name="timeoutoverride">Override timeout period.</param>
+        /// <returns></returns>
+        public async Task<InteractivityResult<DiscordEmoji>> WaitForReactionAddOrRemoveAsync(DiscordMessage m, DiscordUser u, TimeSpan? timeoutoverride = null)
+        {
+            var timeout = timeoutoverride ?? Config.Timeout;
+            var res = await ReactionListener.GetFirstReactionEmojiAsync(new ReactionListenerRequest(m, u, timeout));
+            return new InteractivityResult<DiscordEmoji>(res == null, res);
         }
 
         /// <summary>
