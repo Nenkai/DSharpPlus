@@ -124,7 +124,23 @@ namespace DSharpPlus.Interactivity.EventHandling
             var msg = await p.GetMessageAsync();
             var emojis = await p.GetEmojisAsync();
 
-            //await msg.DeleteAllReactionsAsync("Pagination");
+            // Test permissions to avoid a 403:
+            // https://totally-not.a-sketchy.site/3pXpRLK.png
+            // Yes, this is an issue
+            // No, we should not require people to guarantee MANAGE_MESSAGES
+            // Need to check following:
+            // - In guild?
+            //  - If not, only clear if own message
+            //  - If yes, check if have permission
+            // - If all above fail (DM && other user's message || guild && no permission), skip this
+            var chn = msg.Channel;
+            var gld = chn?.Guild;
+            var mbr = gld?.CurrentMember;
+
+            if (gld == null /* == is DM */ && msg.Author == this._client.CurrentUser /* == is not own message */ ||
+                mbr != null /* == is guild and cache is valid */ && (chn.PermissionsFor(mbr) & Permissions.ManageChannels) != 0) /* == has permissions */
+                await msg.DeleteAllReactionsAsync("Pagination");
+            // ENDOF: 403 fix
 
             if (emojis.SkipLeft != null)
                 await msg.CreateReactionAsync(emojis.SkipLeft);
