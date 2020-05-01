@@ -1,10 +1,8 @@
-﻿using DSharpPlus.Entities;
+﻿using System;
+using System.Threading.Tasks;
+using DSharpPlus.Entities;
 using DSharpPlus.EventArgs;
 using DSharpPlus.Interactivity.Concurrency;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace DSharpPlus.Interactivity.EventHandling
 {
@@ -137,7 +135,11 @@ namespace DSharpPlus.Interactivity.EventHandling
             var gld = chn?.Guild;
             var mbr = gld?.CurrentMember;
 
+<<<<<<< HEAD
             if (gld == null /* == is DM */ && msg.Author == this._client.CurrentUser /* == is not own message */ ||
+=======
+            if (gld == null /* == is DM */ && msg.Author == this._client.CurrentUser /* == is own message */ ||
+>>>>>>> upstream/master
                 mbr != null /* == is guild and cache is valid */ && (chn.PermissionsFor(mbr) & Permissions.ManageChannels) != 0) /* == has permissions */
                 await msg.DeleteAllReactionsAsync("Pagination");
             // ENDOF: 403 fix
