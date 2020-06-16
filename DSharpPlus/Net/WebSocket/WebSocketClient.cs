@@ -37,6 +37,7 @@ namespace DSharpPlus.Net.WebSocket
         private ClientWebSocket _ws;
 
         private volatile bool _isClientClose = false;
+        private volatile bool _isConnected = false;
         private volatile bool _isDisposed = false;
 
         /// <summary>
@@ -98,7 +99,6 @@ namespace DSharpPlus.Net.WebSocket
             finally
             {
                 this._senderLock.Release();
-                await this._connected.InvokeAsync().ConfigureAwait(false);
             }
         }
 
@@ -115,22 +115,20 @@ namespace DSharpPlus.Net.WebSocket
                     await this._ws.CloseOutputAsync((WebSocketCloseStatus)code, message, CancellationToken.None).ConfigureAwait(false);
 
                 if (this._receiverTask != null)
-                    await this._receiverTask.ConfigureAwait(false); // Ensure that receving completed
+                    await this._receiverTask.ConfigureAwait(false); // Ensure that receiving completed
+
+                if (this._isConnected)
+                    this._isConnected = false;
 
                 // Cancel all running tasks
-                if (this._socketTokenSource != null)
-                {
-                    this._socketTokenSource.Cancel();
-                    this._socketTokenSource.Dispose();
-                }
+                this._socketTokenSource?.Cancel();
+                this._socketTokenSource?.Dispose();
 
-                if (this._receiverTokenSource != null)
-                {
-                    this._receiverTokenSource.Cancel();
-                    this._receiverTokenSource.Dispose();
-                }
+                this._receiverTokenSource?.Cancel();
+                this._receiverTokenSource?.Dispose();
+
             }
-            catch (Exception ex) { }
+            catch { }
             finally
             {
                 this._senderLock.Release();
@@ -213,6 +211,7 @@ namespace DSharpPlus.Net.WebSocket
                         do
                         {
                             result = await this._ws.ReceiveAsync(buffer, CancellationToken.None).ConfigureAwait(false);
+
                             if (result.MessageType == WebSocketMessageType.Close)
                                 break;
 
@@ -225,6 +224,12 @@ namespace DSharpPlus.Net.WebSocket
                         bs.Read(resultBytes, 0, resultBytes.Length);
                         bs.Position = 0;
                         bs.SetLength(0);
+
+                        if (!this._isConnected)
+                        {
+                            this._isConnected = true;
+                            await this._connected.InvokeAsync().ConfigureAwait(false);
+                        }
 
                         if (result.MessageType == WebSocketMessageType.Binary)
                         {
