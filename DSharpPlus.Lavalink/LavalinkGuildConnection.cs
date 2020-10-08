@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -7,6 +8,7 @@ using DSharpPlus.Entities;
 using DSharpPlus.EventArgs;
 using DSharpPlus.Lavalink.Entities;
 using DSharpPlus.Lavalink.EventArgs;
+using Emzi0767.Utilities;
 using Newtonsoft.Json;
 
 namespace DSharpPlus.Lavalink
@@ -21,63 +23,63 @@ namespace DSharpPlus.Lavalink
         /// <summary>
         /// Triggered whenever Lavalink updates player status.
         /// </summary>
-        public event AsyncEventHandler<PlayerUpdateEventArgs> PlayerUpdated
+        public event AsyncEventHandler<LavalinkGuildConnection, PlayerUpdateEventArgs> PlayerUpdated
         {
             add { this._playerUpdated.Register(value); }
             remove { this._playerUpdated.Unregister(value); }
         }
-        private AsyncEvent<PlayerUpdateEventArgs> _playerUpdated;
+        private AsyncEvent<LavalinkGuildConnection, PlayerUpdateEventArgs> _playerUpdated;
 
         /// <summary>
         /// Triggered whenever playback of a track starts.
         /// <para>This is only available for version 3.3.1 and greater.</para>
         /// </summary>
-        public event AsyncEventHandler<TrackStartEventArgs> PlaybackStarted
+        public event AsyncEventHandler<LavalinkGuildConnection, TrackStartEventArgs> PlaybackStarted
         {
             add { this._playbackStarted.Register(value); }
             remove { this._playbackStarted.Unregister(value); }
         }
-        private AsyncEvent<TrackStartEventArgs> _playbackStarted;
+        private AsyncEvent<LavalinkGuildConnection, TrackStartEventArgs> _playbackStarted;
 
         /// <summary>
         /// Triggered whenever playback of a track finishes.
         /// </summary>
-        public event AsyncEventHandler<TrackFinishEventArgs> PlaybackFinished
+        public event AsyncEventHandler<LavalinkGuildConnection, TrackFinishEventArgs> PlaybackFinished
         {
             add { this._playbackFinished.Register(value); }
             remove { this._playbackFinished.Unregister(value); }
         }
-        private AsyncEvent<TrackFinishEventArgs> _playbackFinished;
+        private AsyncEvent<LavalinkGuildConnection, TrackFinishEventArgs> _playbackFinished;
 
         /// <summary>
         /// Triggered whenever playback of a track gets stuck.
         /// </summary>
-        public event AsyncEventHandler<TrackStuckEventArgs> TrackStuck
+        public event AsyncEventHandler<LavalinkGuildConnection, TrackStuckEventArgs> TrackStuck
         {
             add { this._trackStuck.Register(value); }
             remove { this._trackStuck.Unregister(value); }
         }
-        private AsyncEvent<TrackStuckEventArgs> _trackStuck;
+        private AsyncEvent<LavalinkGuildConnection, TrackStuckEventArgs> _trackStuck;
 
         /// <summary>
         /// Triggered whenever playback of a track encounters an error.
         /// </summary>
-        public event AsyncEventHandler<TrackExceptionEventArgs> TrackException
+        public event AsyncEventHandler<LavalinkGuildConnection, TrackExceptionEventArgs> TrackException
         {
             add { this._trackException.Register(value); }
             remove { this._trackException.Unregister(value); }
         }
-        private AsyncEvent<TrackExceptionEventArgs> _trackException;
+        private AsyncEvent<LavalinkGuildConnection, TrackExceptionEventArgs> _trackException;
 
         /// <summary>
         /// Triggered whenever Discord Voice WebSocket connection is terminated.
         /// </summary>
-        public event AsyncEventHandler<WebSocketCloseEventArgs> DiscordWebSocketClosed
+        public event AsyncEventHandler<LavalinkGuildConnection, WebSocketCloseEventArgs> DiscordWebSocketClosed
         {
             add { this._webSocketClosed.Register(value); }
             remove { this._webSocketClosed.Unregister(value); }
         }
-        private AsyncEvent<WebSocketCloseEventArgs> _webSocketClosed;
+        private AsyncEvent<LavalinkGuildConnection, WebSocketCloseEventArgs> _webSocketClosed;
 
         /// <summary>
         /// Gets whether this channel is still connected.
@@ -100,44 +102,56 @@ namespace DSharpPlus.Lavalink
         /// </summary>
         public DiscordGuild Guild => this.Channel.Guild;
 
-        private LavalinkNodeConnection Node { get; }
+        /// <summary>
+        /// Gets the Lavalink node associated with this connection.
+        /// </summary>
+        public LavalinkNodeConnection Node { get; }
+
         internal string GuildIdString => this.GuildId.ToString(CultureInfo.InvariantCulture);
         internal ulong GuildId => this.Channel.Guild.Id;
         internal VoiceStateUpdateEventArgs VoiceStateUpdate { get; set; }
-        internal bool ManuallyDisconnected { get; set; } = false;
+        internal TaskCompletionSource<bool> VoiceWsDisconnectTcs { get; set; }
 
         internal LavalinkGuildConnection(LavalinkNodeConnection node, DiscordChannel channel, VoiceStateUpdateEventArgs vstu)
         {
             this.Node = node;
             this.VoiceStateUpdate = vstu;
             this.CurrentState = new LavalinkPlayerState();
+            this.VoiceWsDisconnectTcs = new TaskCompletionSource<bool>();
 
             Volatile.Write(ref this._isDisposed, false);
 
-            this._playerUpdated = new AsyncEvent<PlayerUpdateEventArgs>(this.Node.Discord.EventErrorHandler, "LAVALINK_PLAYER_UPDATE");
-            this._playbackStarted = new AsyncEvent<TrackStartEventArgs>(this.Node.Discord.EventErrorHandler, "LAVALINK_PLAYBACK_STARTED");
-            this._playbackFinished = new AsyncEvent<TrackFinishEventArgs>(this.Node.Discord.EventErrorHandler, "LAVALINK_PLAYBACK_FINISHED");
-            this._trackStuck = new AsyncEvent<TrackStuckEventArgs>(this.Node.Discord.EventErrorHandler, "LAVALINK_TRACK_STUCK");
-            this._trackException = new AsyncEvent<TrackExceptionEventArgs>(this.Node.Discord.EventErrorHandler, "LAVALINK_TRACK_EXCEPTION");
-            this._webSocketClosed = new AsyncEvent<WebSocketCloseEventArgs>(this.Node.Discord.EventErrorHandler, "LAVALINK_DISCORD_WEBSOCKET_CLOSED");
+            this._playerUpdated = new AsyncEvent<LavalinkGuildConnection, PlayerUpdateEventArgs>("LAVALINK_PLAYER_UPDATE", TimeSpan.Zero, this.Node.Discord.EventErrorHandler);
+            this._playbackStarted = new AsyncEvent<LavalinkGuildConnection, TrackStartEventArgs>("LAVALINK_PLAYBACK_STARTED", TimeSpan.Zero, this.Node.Discord.EventErrorHandler);
+            this._playbackFinished = new AsyncEvent<LavalinkGuildConnection, TrackFinishEventArgs>("LAVALINK_PLAYBACK_FINISHED", TimeSpan.Zero, this.Node.Discord.EventErrorHandler);
+            this._trackStuck = new AsyncEvent<LavalinkGuildConnection, TrackStuckEventArgs>("LAVALINK_TRACK_STUCK", TimeSpan.Zero, this.Node.Discord.EventErrorHandler);
+            this._trackException = new AsyncEvent<LavalinkGuildConnection, TrackExceptionEventArgs>("LAVALINK_TRACK_EXCEPTION", TimeSpan.Zero, this.Node.Discord.EventErrorHandler);
+            this._webSocketClosed = new AsyncEvent<LavalinkGuildConnection, WebSocketCloseEventArgs>("LAVALINK_DISCORD_WEBSOCKET_CLOSED", TimeSpan.Zero, this.Node.Discord.EventErrorHandler);
         }
 
         /// <summary>
-        /// Disconnect from this voice channel.
+        /// Disconnects the connection from the voice channel.
         /// </summary>
-        public async Task DisconnectAsync()
+        /// <param name="shouldDestroy">Whether the connection should be destroyed on the Lavalink server when leaving.</param>
+
+        public Task DisconnectAsync(bool shouldDestroy = true)
+            => this.DisconnectInternalAsync(shouldDestroy);
+
+        internal async Task DisconnectInternalAsync(bool shouldDestroy, bool isManualDisconnection = false)
         {
-            if (!this.IsConnected)
+            if (!this.IsConnected && !isManualDisconnection)
                 throw new InvalidOperationException("This connection is not valid.");
 
             Volatile.Write(ref this._isDisposed, true);
 
-            await this.Node.SendPayloadAsync(new LavalinkDestroy(this)).ConfigureAwait(false);
+            if (shouldDestroy)
+                await this.Node.SendPayloadAsync(new LavalinkDestroy(this)).ConfigureAwait(false);
 
-            if(!this.ManuallyDisconnected)
+            if (!isManualDisconnection)
+            {
                 await this.SendVoiceUpdateAsync().ConfigureAwait(false);
-
-            this.ChannelDisconnected?.Invoke(this);
+                this.ChannelDisconnected?.Invoke(this);
+            }
         }
 
         internal async Task SendVoiceUpdateAsync()
@@ -154,8 +168,33 @@ namespace DSharpPlus.Lavalink
                 }
             };
             var vsj = JsonConvert.SerializeObject(vsd, Formatting.None);
-            await (this.Channel.Discord as DiscordClient)._webSocketClient.SendMessageAsync(vsj).ConfigureAwait(false);
+            await (this.Channel.Discord as DiscordClient).WsSendAsync(vsj).ConfigureAwait(false);
         }
+
+        /// <summary>
+        /// Searches for specified terms.
+        /// </summary>
+        /// <param name="searchQuery">What to search for.</param>
+        /// <param name="type">What platform will search for.</param>
+        /// <returns>A collection of tracks matching the criteria.</returns>
+        public Task<LavalinkLoadResult> GetTracksAsync(string searchQuery, LavalinkSearchType type = LavalinkSearchType.Youtube)
+            => this.Node.Rest.GetTracksAsync(searchQuery, type);
+
+        /// <summary>
+        /// Loads tracks from specified URL.
+        /// </summary>
+        /// <param name="uri">URL to load tracks from.</param>
+        /// <returns>A collection of tracks from the URL.</returns>
+        public Task<LavalinkLoadResult> GetTracksAsync(Uri uri)
+            => this.Node.Rest.GetTracksAsync(uri);
+
+        /// <summary>
+        /// Loads tracks from a local file.
+        /// </summary>
+        /// <param name="file">File to load tracks from.</param>
+        /// <returns>A collection of tracks from the file.</returns>
+        public Task<LavalinkLoadResult> GetTracksAsync(FileInfo file)
+            => this.Node.Rest.GetTracksAsync(file);
 
         /// <summary>
         /// Queues the specified track for playback.
@@ -282,13 +321,13 @@ namespace DSharpPlus.Lavalink
             this.CurrentState.LastUpdate = newState.Time;
             this.CurrentState.PlaybackPosition = newState.Position;
 
-            return this._playerUpdated.InvokeAsync(new PlayerUpdateEventArgs(this, newState.Time, newState.Position));
+            return this._playerUpdated.InvokeAsync(this, new PlayerUpdateEventArgs(this, newState.Time, newState.Position));
         }
 
         internal Task InternalPlaybackStartedAsync(string track)
         {
             var ea = new TrackStartEventArgs(this, LavalinkUtilities.DecodeTrack(track));
-            return this._playbackStarted.InvokeAsync(ea);
+            return this._playbackStarted.InvokeAsync(this, ea);
         }
 
         internal Task InternalPlaybackFinishedAsync(TrackFinishData e)
@@ -297,23 +336,23 @@ namespace DSharpPlus.Lavalink
                 this.CurrentState.CurrentTrack = default;
 
             var ea = new TrackFinishEventArgs(this, LavalinkUtilities.DecodeTrack(e.Track), e.Reason);
-            return this._playbackFinished.InvokeAsync(ea);
+            return this._playbackFinished.InvokeAsync(this, ea);
         }
 
         internal Task InternalTrackStuckAsync(TrackStuckData e)
         {
             var ea = new TrackStuckEventArgs(this, e.Threshold, LavalinkUtilities.DecodeTrack(e.Track));
-            return this._trackStuck.InvokeAsync(ea);
+            return this._trackStuck.InvokeAsync(this, ea);
         }
 
         internal Task InternalTrackExceptionAsync(TrackExceptionData e)
         {
             var ea = new TrackExceptionEventArgs(this, e.Error, LavalinkUtilities.DecodeTrack(e.Track));
-            return this._trackException.InvokeAsync(ea);
+            return this._trackException.InvokeAsync(this, ea);
         }
 
         internal Task InternalWebSocketClosedAsync(WebSocketCloseEventArgs e)
-            => this._webSocketClosed.InvokeAsync(e);
+            => this._webSocketClosed.InvokeAsync(this, e);
 
         internal event ChannelDisconnectedEventHandler ChannelDisconnected;
     }

@@ -15,6 +15,7 @@ namespace DSharpPlus.EventArgs
 
         /// <summary>
         /// Gets the user that started typing.
+        /// <para>This can be cast to a <see cref="DiscordMember"/> if the typing occurred in a guild.</para>
         /// </summary>
         public DiscordUser User { get; internal set; }
 
@@ -28,6 +29,6 @@ namespace DSharpPlus.EventArgs
         /// </summary>
         public DateTimeOffset StartedAt { get; internal set; }
 
-        internal TypingStartEventArgs(DiscordClient client) : base(client) { }
+        internal TypingStartEventArgs() : base() { }
     }
 }

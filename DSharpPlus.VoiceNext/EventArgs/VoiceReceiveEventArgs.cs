@@ -14,10 +14,14 @@ namespace DSharpPlus.VoiceNext.EventArgs
         /// </summary>
         public uint SSRC { get; internal set; }
 
+#pragma warning disable CS8632
+
         /// <summary>
         /// Gets the user that sent the audio data.
         /// </summary>
-        public DiscordUser User { get; internal set; }
+        public DiscordUser? User { get; internal set; }
+
+#pragma warning restore
 
         /// <summary>
         /// Gets the received voice data, decoded to PCM format.
@@ -42,6 +46,6 @@ namespace DSharpPlus.VoiceNext.EventArgs
         /// </summary>
         public int AudioDuration { get; internal set; }
 
-        internal VoiceReceiveEventArgs(DiscordClient client) : base(client) { }
+        internal VoiceReceiveEventArgs() : base() { }
     }
 }

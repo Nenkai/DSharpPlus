@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using DSharpPlus.Entities;
 using DSharpPlus.Net.Abstractions;
 using DSharpPlus.Net.Serialization;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -57,18 +58,28 @@ namespace DSharpPlus.Net
 
             var guild = ret.Channel?.Guild;
 
-            if (!this.Discord.UserCache.TryGetValue(author.Id, out var usr))
-                this.Discord.UserCache[author.Id] = (usr = new DiscordUser(author) { Discord = this.Discord });
-
-            if (guild != null)
+            //If this is a webhook, it shouldn't be in the user cache.
+            if (author.IsBot && int.Parse(author.Discriminator) == 0)
             {
-                if (!guild.Members.TryGetValue(author.Id, out var mbr))
-                    mbr = new DiscordMember(usr) { Discord = this.Discord, _guild_id = guild.Id };
-                ret.Author = mbr;
+                ret.Author = new DiscordUser(author) { Discord = this.Discord };
             }
             else
             {
-                ret.Author = usr;
+                if (!this.Discord.UserCache.TryGetValue(author.Id, out var usr))
+                {
+                    this.Discord.UserCache[author.Id] = usr = new DiscordUser(author) { Discord = this.Discord };
+                }
+
+                if (guild != null)
+                {
+                    if (!guild.Members.TryGetValue(author.Id, out var mbr))
+                        mbr = new DiscordMember(usr) { Discord = this.Discord, _guild_id = guild.Id };
+                    ret.Author = mbr;
+                }
+                else
+                {
+                    ret.Author = usr;
+                }
             }
 
             var mentioned_users = new List<DiscordUser>();
@@ -106,7 +117,7 @@ namespace DSharpPlus.Net
             var req = new RestRequest(client, bucket, url, method, headers, payload, ratelimitWaitOverride);
 
             if (this.Discord != null)
-                this.Discord.DebugLogger.LogTaskFault(this.Rest.ExecuteRequestAsync(req), LogLevel.Error, "REST", "Error while executing request: ");
+                this.Rest.ExecuteRequestAsync(req).LogTaskFault(this.Discord.Logger, LogLevel.Error, LoggerEvents.RestError, "Error while executing request");
             else
                 _ = this.Rest.ExecuteRequestAsync(req);
 
@@ -119,7 +130,7 @@ namespace DSharpPlus.Net
             var req = new MultipartWebRequest(client, bucket, url, method, headers, values, files, ratelimitWaitOverride);
 
             if (this.Discord != null)
-                Discord.DebugLogger.LogTaskFault(this.Rest.ExecuteRequestAsync(req), LogLevel.Error, "REST", "Error while executing request: ");
+                this.Rest.ExecuteRequestAsync(req).LogTaskFault(this.Discord.Logger, LogLevel.Error, LoggerEvents.RestError, "Error while executing request");
             else
                 _ = this.Rest.ExecuteRequestAsync(req);
 
@@ -944,6 +955,33 @@ namespace DSharpPlus.Net
 
             return ret;
         }
+
+        internal async Task<DiscordFollowedChannel> FollowChannelAsync(ulong channel_id, ulong webhook_channel_id)
+        {
+            var pld = new FollowedChannelAddPayload
+            {
+                WebhookChannelId = webhook_channel_id
+            };
+            
+            var route = $"{Endpoints.CHANNELS}/:channel_id{Endpoints.FOLLOWERS}";
+            var bucket = this.Rest.GetBucket(RestRequestMethod.POST, route, new {channel_id}, out var path);
+
+            var url = Utilities.GetApiUriFor(path);
+            var response = await this.DoRequestAsync(this.Discord, bucket, url, RestRequestMethod.POST, payload: DiscordJson.SerializeObject(pld));
+            
+            return JsonConvert.DeserializeObject<DiscordFollowedChannel>(response.Response);
+        }
+
+        internal async Task<DiscordMessage> CrosspostMessageAsync(ulong channel_id, ulong message_id)
+        {
+            var route = $"{Endpoints.CHANNELS}/:channel_id{Endpoints.MESSAGES}/:message_id{Endpoints.CROSSPOST}";
+            var bucket = this.Rest.GetBucket(RestRequestMethod.POST, route, new {channel_id, message_id}, out var path);
+
+            var url = Utilities.GetApiUriFor(path);
+            var response = await this.DoRequestAsync(this.Discord, bucket, url, RestRequestMethod.POST);
+            return JsonConvert.DeserializeObject<DiscordMessage>(response.Response);
+        }
+        
         #endregion
 
         #region Member
@@ -1596,13 +1634,14 @@ namespace DSharpPlus.Net
             return ret;
         }
 
-        internal async Task<DiscordWebhook> ModifyWebhookAsync(ulong webhook_id, string name, Optional<string> base64_avatar, string reason)
+        internal async Task<DiscordWebhook> ModifyWebhookAsync(ulong webhook_id, ulong channelId, string name, Optional<string> base64_avatar, string reason)
         {
             var pld = new RestWebhookPayload
             {
                 Name = name,
                 AvatarBase64 = base64_avatar.HasValue ? base64_avatar.Value : null,
-                AvatarSet = base64_avatar.HasValue
+                AvatarSet = base64_avatar.HasValue,
+                ChannelId = channelId
             };
 
             var headers = new Dictionary<string, string>();
@@ -1993,6 +2032,22 @@ namespace DSharpPlus.Net
             }
 
             return new ReadOnlyCollection<DiscordApplicationAsset>(new List<DiscordApplicationAsset>(assets));
+        }
+
+        internal async Task<GatewayInfo> GetGatewayInfoAsync()
+        {
+            var headers = Utilities.GetBaseHeaders();
+            var route = Endpoints.GATEWAY;
+            if (this.Discord.Configuration.TokenType == TokenType.Bot)
+                route += Endpoints.BOT;
+            var bucket = this.Rest.GetBucket(RestRequestMethod.GET, route, new { }, out var path);
+
+            var url = Utilities.GetApiUriFor(path);
+            var res = await this.DoRequestAsync(this.Discord, bucket, url, RestRequestMethod.GET, headers).ConfigureAwait(false);
+
+            var info = JObject.Parse(res.Response).ToObject<GatewayInfo>();
+            info.SessionBucket.ResetAfter = DateTimeOffset.UtcNow + TimeSpan.FromMilliseconds(info.SessionBucket.resetAfter);
+            return info;
         }
         #endregion
     }

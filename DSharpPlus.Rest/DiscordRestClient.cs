@@ -6,6 +6,7 @@ using System.IO;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System;
+using DSharpPlus.Exceptions;
 using DSharpPlus.Net.Models;
 
 namespace DSharpPlus
@@ -591,6 +592,27 @@ namespace DSharpPlus
         /// <returns></returns>
         public Task<DiscordDmChannel> CreateDmAsync(ulong recipient_id)
             => this.ApiClient.CreateDmAsync(recipient_id);
+
+        /// <summary>
+        /// Follows a news channel
+        /// </summary>
+        /// <param name="channel_id">Id of the channel to follow</param>
+        /// <param name="webhook_channel_id">Id of the channel to crosspost messages to</param>
+        /// <exception cref="UnauthorizedException">Thrown when the current user doesn't have <see cref="Permissions.ManageWebhooks"/> on the target channel</exception>
+        public Task<DiscordFollowedChannel> FollowChannelAsync(ulong channel_id, ulong webhook_channel_id)
+            => this.ApiClient.FollowChannelAsync(channel_id, webhook_channel_id);
+
+        /// <summary>
+        /// Publishes a message in a news channel to following channels
+        /// </summary>
+        /// <param name="channel_id">Id of the news channel the message to crosspost belongs to</param>
+        /// <param name="message_id">Id of the message to crosspost</param>
+        /// <exception cref="UnauthorizedException">
+        ///     Thrown when the current user doesn't have <see cref="Permissions.ManageWebhooks"/> and/or <see cref="Permissions.SendMessages"/> 
+        /// </exception>
+        public Task<DiscordMessage> CrosspostMessageAsync(ulong channel_id, ulong message_id)
+            => this.ApiClient.CrosspostMessageAsync(channel_id, message_id);
+        
         #endregion
 
         #region Member
@@ -998,29 +1020,31 @@ namespace DSharpPlus
         /// Modifies a webhook
         /// </summary>
         /// <param name="webhook_id">Webhook id</param>
+        /// <param name="channelId">The new channel id the webhook should be moved to.</param>
         /// <param name="name">New webhook name</param>
         /// <param name="base64_avatar">New webhook avatar (base64)</param>
         /// <param name="reason">Reason why this webhook was modified</param>
         /// <returns></returns>
-        public Task<DiscordWebhook> ModifyWebhookAsync(ulong webhook_id, string name, string base64_avatar, string reason)
-            => this.ApiClient.ModifyWebhookAsync(webhook_id, name, base64_avatar, reason);
+        public Task<DiscordWebhook> ModifyWebhookAsync(ulong webhook_id, ulong channelId, string name, string base64_avatar, string reason)
+            => this.ApiClient.ModifyWebhookAsync(webhook_id, channelId, name, base64_avatar, reason);
 
         /// <summary>
         /// Modifies a webhook
         /// </summary>
         /// <param name="webhook_id">Webhook id</param>
+        /// <param name="channelId">The new channel id the webhook should be moved to.</param>
         /// <param name="name">New webhook name</param>
         /// <param name="avatar">New webhook avatar</param>
         /// <param name="reason">Reason why this webhook was modified</param>
         /// <returns></returns>
-        public Task<DiscordWebhook> ModifyWebhookAsync(ulong webhook_id, string name, Stream avatar, string reason)
+        public Task<DiscordWebhook> ModifyWebhookAsync(ulong webhook_id, ulong channelId, string name, Stream avatar, string reason)
         {
             string av64 = null;
             if (avatar != null)
                 using (var imgtool = new ImageTool(avatar))
                     av64 = imgtool.GetBase64();
 
-            return this.ApiClient.ModifyWebhookAsync(webhook_id, name, av64, reason);
+            return this.ApiClient.ModifyWebhookAsync(webhook_id, channelId, name, av64, reason);
         }
 
         /// <summary>

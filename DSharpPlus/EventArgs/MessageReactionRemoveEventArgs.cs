@@ -8,7 +8,7 @@ namespace DSharpPlus.EventArgs
     public class MessageReactionRemoveEventArgs : DiscordEventArgs
     {
         /// <summary>
-        /// Gets the message for which the update occured.
+        /// Gets the message for which the update occurred.
         /// </summary>
         public DiscordMessage Message { get; internal set; }
 
@@ -37,6 +37,6 @@ namespace DSharpPlus.EventArgs
         /// </summary>
         public DiscordEmoji Emoji { get; internal set; }
 
-        internal MessageReactionRemoveEventArgs(DiscordClient client) : base(client) { }
+        internal MessageReactionRemoveEventArgs() : base() { }
     }
 }

@@ -10,6 +10,20 @@ namespace DSharpPlus.Test
 	{
 		public static ConcurrentDictionary<ulong, string> PrefixSettings { get; } = new ConcurrentDictionary<ulong, string>();
 
+		[Command("crosspost")]
+		public async Task CrosspostAsync(CommandContext ctx, DiscordChannel chn, DiscordMessage msg)
+		{
+			var message = await chn.CrosspostMessageAsync(msg);
+			await ctx.RespondAsync($":ok_hand: Message published: {message.Id}");
+		}
+
+		[Command("follow")]
+		public async Task FollowAsync(CommandContext ctx, DiscordChannel channelToFollow, DiscordChannel targetChannel)
+		{
+			await channelToFollow.FollowAsync(targetChannel);
+			await ctx.RespondAsync($":ok_hand: Following channel {channelToFollow.Mention} into {targetChannel.Mention} (Guild: {targetChannel.Guild.Id})");
+		}
+
 		[Command("setprefix"), Aliases("channelprefix"), Description("Sets custom command prefix for current channel. The bot will still respond to the default one."), RequireOwner]
 		public async Task SetPrefixAsync(CommandContext ctx, [Description("The prefix to use for current channel.")] string prefix = null)
 		{
@@ -49,14 +63,17 @@ namespace DSharpPlus.Test
         public async Task MentionablesAsync(CommandContext ctx, DiscordUser user)
         {
             string content = $"Hey, {user.Mention}! Listen!";
-            await ctx.Channel.SendMessageAsync("Default Behaviour: " + content);
-            await ctx.Channel.SendMessageAsync("Empty Mention Array: " + content, mentions: new IMention[0]);
-            await ctx.Channel.SendMessageAsync("UserMention(user): " + content, mentions: new IMention[] { new UserMention(user) });
-            await ctx.Channel.SendMessageAsync("UserMention(SomeoneElse): " + content, mentions: new IMention[] { new UserMention(545836271960850454L) });
-            await ctx.Channel.SendMessageAsync("UserMention(): " + content, mentions: new IMention[] { new UserMention() });
-            await ctx.Channel.SendMessageAsync("Everyone(): " + content, mentions: new IMention[] { new EveryoneMention() });
-            await ctx.Channel.SendMessageAsync("User Mention Everyone & Self: " + content, mentions: new IMention[] { new UserMention(), new UserMention(user) });
-            await ctx.Channel.SendMessageAsync("UserMention.All: " + content, mentions: new IMention[] { UserMention.All });
+            await ctx.Channel.SendMessageAsync("✔ should ping, ❌ should not ping.");                                                                                           
+
+            await ctx.Channel.SendMessageAsync("✔ Default Behaviour: " + content);                                                                                            //Should ping User
+            await ctx.Channel.SendMessageAsync("✔ UserMention(user): " + content, mentions: new IMention[] { new UserMention(user) });                                        //Should ping user
+            await ctx.Channel.SendMessageAsync("✔ UserMention(): " + content, mentions: new IMention[] { new UserMention() });                                                //Should ping user
+            await ctx.Channel.SendMessageAsync("✔ User Mention Everyone & Self: " + content, mentions: new IMention[] { new UserMention(), new UserMention(user) });          //Should ping user
+            await ctx.Channel.SendMessageAsync("✔ UserMention.All: " + content, mentions: new IMention[] { UserMention.All });                                                //Should ping user
+            
+            await ctx.Channel.SendMessageAsync("❌ Empty Mention Array: " + content, mentions: new IMention[0]);                                                               //Should ping no one
+            await ctx.Channel.SendMessageAsync("❌ UserMention(SomeoneElse): " + content, mentions: new IMention[] { new UserMention(545836271960850454L) });                  //Should ping no one (@user was not pinged)
+            await ctx.Channel.SendMessageAsync("❌ Everyone(): " + content, mentions: new IMention[] { new EveryoneMention() });                                               //Should ping no one (@everyone was not pinged)
         }
     }
 }

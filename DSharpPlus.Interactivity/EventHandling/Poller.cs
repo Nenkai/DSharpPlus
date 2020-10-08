@@ -1,5 +1,6 @@
 ﻿using DSharpPlus.EventArgs;
 using DSharpPlus.Interactivity.Concurrency;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -37,8 +38,7 @@ namespace DSharpPlus.Interactivity.EventHandling
             }
             catch (Exception ex)
             {
-                this._client.DebugLogger.LogMessage(LogLevel.Error, "Interactivity",
-                    $"Something went wrong with exception {ex.GetType().Name}.", DateTime.Now);
+                this._client.Logger.LogError(InteractivityEvents.InteractivityPollError, ex, "Exception occurred while polling");
             }
             finally
             {
@@ -49,7 +49,7 @@ namespace DSharpPlus.Interactivity.EventHandling
             return result;
         }
 
-        async Task HandleReactionAdd(MessageReactionAddEventArgs eventargs)
+        async Task HandleReactionAdd(DiscordClient client, MessageReactionAddEventArgs eventargs)
         {
             await Task.Yield();
             foreach (var req in _requests)
@@ -64,7 +64,7 @@ namespace DSharpPlus.Interactivity.EventHandling
                     }
                     else
                     {
-                        var member = await eventargs.Channel.Guild.GetMemberAsync(eventargs.Client.CurrentUser.Id);
+                        var member = await eventargs.Channel.Guild.GetMemberAsync(client.CurrentUser.Id);
                         if(eventargs.Channel.PermissionsFor(member).HasPermission(Permissions.ManageMessages))
                             await eventargs.Message.DeleteReactionAsync(eventargs.Emoji, eventargs.User);
                     }
@@ -72,7 +72,7 @@ namespace DSharpPlus.Interactivity.EventHandling
             }
         }
 
-        async Task HandleReactionRemove(MessageReactionRemoveEventArgs eventargs)
+        async Task HandleReactionRemove(DiscordClient client, MessageReactionRemoveEventArgs eventargs)
         {
             await Task.Yield();
             foreach (var req in _requests)
@@ -86,7 +86,7 @@ namespace DSharpPlus.Interactivity.EventHandling
             }
         }
 
-        async Task HandleReactionClear(MessageReactionsClearEventArgs eventargs)
+        async Task HandleReactionClear(DiscordClient client, MessageReactionsClearEventArgs eventargs)
         {
             await Task.Yield();
             foreach (var req in _requests)

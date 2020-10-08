@@ -1,14 +1,12 @@
-﻿using DSharpPlus.Interactivity.Concurrency;
-using System;
-using System.Collections;
-using System.Collections.Concurrent;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reflection;
-using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
+using DSharpPlus.Interactivity.Concurrency;
+using Emzi0767.Utilities;
+using Microsoft.Extensions.Logging;
 
 namespace DSharpPlus.Interactivity.EventHandling
 {
@@ -20,8 +18,8 @@ namespace DSharpPlus.Interactivity.EventHandling
     internal class EventWaiter<T> : IDisposable where T : AsyncEventArgs
     {
         DiscordClient _client;
-        AsyncEvent<T> _event;
-        AsyncEventHandler<T> _handler;
+        AsyncEvent<DiscordClient, T> _event;
+        AsyncEventHandler<DiscordClient, T> _handler;
         ConcurrentHashSet<MatchRequest<T>> _matchrequests;
         ConcurrentHashSet<CollectRequest<T>> _collectrequests;
         bool disposed = false;
@@ -34,11 +32,11 @@ namespace DSharpPlus.Interactivity.EventHandling
         {
             this._client = client;
             var tinfo = _client.GetType().GetTypeInfo();
-            var handler = tinfo.DeclaredFields.First(x => x.FieldType == typeof(AsyncEvent<T>));
+            var handler = tinfo.DeclaredFields.First(x => x.FieldType == typeof(AsyncEvent<DiscordClient, T>));
             this._matchrequests = new ConcurrentHashSet<MatchRequest<T>>();
             this._collectrequests = new ConcurrentHashSet<CollectRequest<T>>();
-            this._event = (AsyncEvent<T>)handler.GetValue(_client);
-            this._handler = new AsyncEventHandler<T>(HandleEvent);
+            this._event = (AsyncEvent<DiscordClient, T>)handler.GetValue(_client);
+            this._handler = new AsyncEventHandler<DiscordClient, T>(HandleEvent);
             this._event.Register(_handler);
         }
 
@@ -57,8 +55,7 @@ namespace DSharpPlus.Interactivity.EventHandling
             }
             catch (Exception ex)
             {
-                this._client.DebugLogger.LogMessage(LogLevel.Error, "Interactivity", 
-                    $"Something went wrong waiting for {typeof(T).Name} with exception {ex.GetType().Name}.", DateTime.Now);
+                this._client.Logger.LogError(InteractivityEvents.InteractivityWaitError, ex, "An exception occurred while waiting for {0}", typeof(T).Name);
             }
             finally
             {
@@ -78,8 +75,7 @@ namespace DSharpPlus.Interactivity.EventHandling
             }
             catch (Exception ex)
             {
-                this._client.DebugLogger.LogMessage(LogLevel.Error, "Interactivity", 
-                    $"Something went wrong collecting from {typeof(T).Name} with exception {ex.GetType().Name}.", DateTime.Now);
+                this._client.Logger.LogError(InteractivityEvents.InteractivityWaitError, ex, "An exception occurred while collecting from {0}", typeof(T).Name);
             }
             finally
             {
@@ -90,7 +86,7 @@ namespace DSharpPlus.Interactivity.EventHandling
             return result;
         }
 
-        async Task HandleEvent(T eventargs)
+        async Task HandleEvent(DiscordClient client, T eventargs)
         {
             await Task.Yield();
             if (!disposed)

@@ -9,7 +9,7 @@ namespace DSharpPlus.EventArgs
     public class GuildMemberUpdateEventArgs : DiscordEventArgs
     {
         /// <summary>
-        /// Gets the guild in which the update occured.
+        /// Gets the guild in which the update occurred.
         /// </summary>
         public DiscordGuild Guild { get; internal set; }
 
@@ -38,6 +38,6 @@ namespace DSharpPlus.EventArgs
         /// </summary>
         public DiscordMember Member { get; internal set; }
 
-        internal GuildMemberUpdateEventArgs(DiscordClient client) : base(client) { }
+        internal GuildMemberUpdateEventArgs() : base() { }
     }
 }

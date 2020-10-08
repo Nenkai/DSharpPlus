@@ -8,7 +8,7 @@ namespace DSharpPlus.EventArgs
     public class GuildRoleUpdateEventArgs : DiscordEventArgs
     {
         /// <summary>
-        /// Gets the guild in which the update occured.
+        /// Gets the guild in which the update occurred.
         /// </summary>
         public DiscordGuild Guild { get; internal set; }
 
@@ -22,6 +22,6 @@ namespace DSharpPlus.EventArgs
         /// </summary>
         public DiscordRole RoleBefore { get; internal set; }
 
-        internal GuildRoleUpdateEventArgs(DiscordClient client) : base(client) { }
+        internal GuildRoleUpdateEventArgs() : base() { }
     }
 }

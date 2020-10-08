@@ -7,6 +7,7 @@ using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
 using DSharpPlus.EventArgs;
+using Emzi0767.Utilities;
 
 namespace DSharpPlus.Net.WebSocket
 {
@@ -38,7 +39,7 @@ namespace DSharpPlus.Net.WebSocket
 
         private volatile bool _isClientClose = false;
         private volatile bool _isConnected = false;
-        private volatile bool _isDisposed = false;
+        private bool _isDisposed = false;
 
         /// <summary>
         /// Instantiates a new WebSocket client with specified proxy settings.
@@ -46,10 +47,10 @@ namespace DSharpPlus.Net.WebSocket
         /// <param name="proxy">Proxy settings for the client.</param>
         private WebSocketClient(IWebProxy proxy)
         {
-            this._connected = new AsyncEvent(this.EventErrorHandler, "WS_CONNECT");
-            this._disconnected = new AsyncEvent<SocketCloseEventArgs>(this.EventErrorHandler, "WS_DISCONNECT");
-            this._messageReceived = new AsyncEvent<SocketMessageEventArgs>(this.EventErrorHandler, "WS_MESSAGE");
-            this._exceptionThrown = new AsyncEvent<SocketErrorEventArgs>(null, "WS_ERROR");
+            this._connected = new AsyncEvent<WebSocketClient, SocketEventArgs>("WS_CONNECT", TimeSpan.Zero, this.EventErrorHandler);
+            this._disconnected = new AsyncEvent<WebSocketClient, SocketCloseEventArgs>("WS_DISCONNECT", TimeSpan.Zero, this.EventErrorHandler);
+            this._messageReceived = new AsyncEvent<WebSocketClient, SocketMessageEventArgs>("WS_MESSAGE", TimeSpan.Zero, this.EventErrorHandler);
+            this._exceptionThrown = new AsyncEvent<WebSocketClient, SocketErrorEventArgs>("WS_ERROR", TimeSpan.Zero, null);
 
             this.Proxy = proxy;
             this._defaultHeaders = new Dictionary<string, string>();
@@ -93,6 +94,7 @@ namespace DSharpPlus.Net.WebSocket
                 this._socketToken = this._socketTokenSource.Token;
 
                 this._isClientClose = false;
+                this._isDisposed = false;
                 await this._ws.ConnectAsync(uri, this._socketToken).ConfigureAwait(false);
                 this._receiverTask = Task.Run(this.ReceiverLoopAsync, this._receiverToken);
             }
@@ -111,7 +113,7 @@ namespace DSharpPlus.Net.WebSocket
             try
             {
                 this._isClientClose = true;
-                if (this._ws != null)
+                if (this._ws != null && (this._ws.State == WebSocketState.Open || this._ws.State == WebSocketState.CloseReceived))
                     await this._ws.CloseOutputAsync((WebSocketCloseStatus)code, message, CancellationToken.None).ConfigureAwait(false);
 
                 if (this._receiverTask != null)
@@ -120,13 +122,19 @@ namespace DSharpPlus.Net.WebSocket
                 if (this._isConnected)
                     this._isConnected = false;
 
-                // Cancel all running tasks
-                this._socketTokenSource?.Cancel();
-                this._socketTokenSource?.Dispose();
+                if (!this._isDisposed)
+                {
+                    // Cancel all running tasks
+                    if (this._socketToken.CanBeCanceled)
+                        this._socketTokenSource?.Cancel();
+                    this._socketTokenSource?.Dispose();
 
-                this._receiverTokenSource?.Cancel();
-                this._receiverTokenSource?.Dispose();
+                    if (this._receiverToken.CanBeCanceled)
+                        this._receiverTokenSource?.Cancel();
+                    this._receiverTokenSource?.Dispose();
 
+                    this._isDisposed = true;
+                }
             }
             catch { }
             finally
@@ -139,6 +147,9 @@ namespace DSharpPlus.Net.WebSocket
         public async Task SendMessageAsync(string message)
         {
             if (this._ws == null)
+                return;
+
+            if (this._ws.State != WebSocketState.Open && this._ws.State != WebSocketState.CloseReceived)
                 return;
 
             var bytes = Utilities.UTF8.GetBytes(message);
@@ -184,10 +195,11 @@ namespace DSharpPlus.Net.WebSocket
                 return;
 
             this._isDisposed = true;
-            this.DisconnectAsync().GetAwaiter().GetResult();
 
-            this._receiverTokenSource.Dispose();
-            this._socketTokenSource.Dispose();
+            this.DisconnectAsync().ConfigureAwait(false).GetAwaiter().GetResult();
+
+            this._receiverTokenSource?.Dispose();
+            this._socketTokenSource?.Dispose();
         }
 
         internal async Task ReceiverLoopAsync()
@@ -225,19 +237,19 @@ namespace DSharpPlus.Net.WebSocket
                         bs.Position = 0;
                         bs.SetLength(0);
 
-                        if (!this._isConnected)
+                        if (!this._isConnected && result.MessageType != WebSocketMessageType.Close)
                         {
                             this._isConnected = true;
-                            await this._connected.InvokeAsync().ConfigureAwait(false);
+                            await this._connected.InvokeAsync(this, new SocketEventArgs()).ConfigureAwait(false);
                         }
 
                         if (result.MessageType == WebSocketMessageType.Binary)
                         {
-                            await this._messageReceived.InvokeAsync(new SocketBinaryMessageEventArgs(resultBytes)).ConfigureAwait(false);
+                            await this._messageReceived.InvokeAsync(this, new SocketBinaryMessageEventArgs(resultBytes)).ConfigureAwait(false);
                         }
                         else if (result.MessageType == WebSocketMessageType.Text)
                         {
-                            await this._messageReceived.InvokeAsync(new SocketTextMessageEventArgs(Utilities.UTF8.GetString(resultBytes))).ConfigureAwait(false);
+                            await this._messageReceived.InvokeAsync(this, new SocketTextMessageEventArgs(Utilities.UTF8.GetString(resultBytes))).ConfigureAwait(false);
                         }
                         else // close
                         {
@@ -251,7 +263,7 @@ namespace DSharpPlus.Net.WebSocket
                                 await this._ws.CloseOutputAsync(code, result.CloseStatusDescription, CancellationToken.None).ConfigureAwait(false);
                             }
 
-                            await this._disconnected.InvokeAsync(new SocketCloseEventArgs(null) { CloseCode = (int)result.CloseStatus, CloseMessage = result.CloseStatusDescription }).ConfigureAwait(false);
+                            await this._disconnected.InvokeAsync(this, new SocketCloseEventArgs() { CloseCode = (int)result.CloseStatus, CloseMessage = result.CloseStatusDescription }).ConfigureAwait(false);
                             break;
                         }
                     }
@@ -259,8 +271,8 @@ namespace DSharpPlus.Net.WebSocket
             }
             catch (Exception ex)
             {
-                await this._exceptionThrown.InvokeAsync(new SocketErrorEventArgs(null) { Exception = ex }).ConfigureAwait(false);
-                await this._disconnected.InvokeAsync(new SocketCloseEventArgs(null) { CloseCode = -1, CloseMessage = "" }).ConfigureAwait(false);
+                await this._exceptionThrown.InvokeAsync(this, new SocketErrorEventArgs() { Exception = ex }).ConfigureAwait(false);
+                await this._disconnected.InvokeAsync(this, new SocketCloseEventArgs() { CloseCode = -1, CloseMessage = "" }).ConfigureAwait(false);
             }
 
             // Don't await or you deadlock
@@ -280,50 +292,46 @@ namespace DSharpPlus.Net.WebSocket
         /// <summary>
         /// Triggered when the client connects successfully.
         /// </summary>
-        public event AsyncEventHandler Connected
+        public event AsyncEventHandler<IWebSocketClient, SocketEventArgs> Connected
         {
             add => this._connected.Register(value);
             remove => this._connected.Unregister(value);
         }
-        private AsyncEvent _connected;
+        private AsyncEvent<WebSocketClient, SocketEventArgs> _connected;
 
         /// <summary>
         /// Triggered when the client is disconnected.
         /// </summary>
-        public event AsyncEventHandler<SocketCloseEventArgs> Disconnected
+        public event AsyncEventHandler<IWebSocketClient, SocketCloseEventArgs> Disconnected
         {
             add => this._disconnected.Register(value);
             remove => this._disconnected.Unregister(value);
         }
-        private AsyncEvent<SocketCloseEventArgs> _disconnected;
+        private AsyncEvent<WebSocketClient, SocketCloseEventArgs> _disconnected;
 
         /// <summary>
         /// Triggered when the client receives a message from the remote party.
         /// </summary>
-        public event AsyncEventHandler<SocketMessageEventArgs> MessageReceived
+        public event AsyncEventHandler<IWebSocketClient, SocketMessageEventArgs> MessageReceived
         {
             add => this._messageReceived.Register(value);
             remove => this._messageReceived.Unregister(value);
         }
-        private AsyncEvent<SocketMessageEventArgs> _messageReceived;
+        private AsyncEvent<WebSocketClient, SocketMessageEventArgs> _messageReceived;
 
         /// <summary>
         /// Triggered when an error occurs in the client.
         /// </summary>
-        public event AsyncEventHandler<SocketErrorEventArgs> ExceptionThrown
+        public event AsyncEventHandler<IWebSocketClient, SocketErrorEventArgs> ExceptionThrown
         {
             add => this._exceptionThrown.Register(value);
             remove => this._exceptionThrown.Unregister(value);
         }
-        private AsyncEvent<SocketErrorEventArgs> _exceptionThrown;
+        private AsyncEvent<WebSocketClient, SocketErrorEventArgs> _exceptionThrown;
 
-        private void EventErrorHandler(string evname, Exception ex)
-        {
-            if (evname.ToLowerInvariant() == "ws_error")
-                Console.WriteLine($"WSERROR: {ex.GetType()} in {evname}!");
-            else
-                this._exceptionThrown.InvokeAsync(new SocketErrorEventArgs(null) { Exception = ex }).ConfigureAwait(false).GetAwaiter().GetResult();
-        }
+        private void EventErrorHandler<TArgs>(AsyncEvent<WebSocketClient, TArgs> asyncEvent, Exception ex, AsyncEventHandler<WebSocketClient, TArgs> handler, WebSocketClient sender, TArgs eventArgs)
+            where TArgs : AsyncEventArgs
+            => this._exceptionThrown.InvokeAsync(this, new SocketErrorEventArgs() { Exception = ex }).ConfigureAwait(false).GetAwaiter().GetResult();
         #endregion
     }
 }

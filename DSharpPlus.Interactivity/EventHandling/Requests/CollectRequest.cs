@@ -1,10 +1,8 @@
-﻿using DSharpPlus.Interactivity.Concurrency;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
+using DSharpPlus.Interactivity.Concurrency;
+using Emzi0767.Utilities;
 
 namespace DSharpPlus.Interactivity.EventHandling
 {
@@ -49,8 +47,12 @@ namespace DSharpPlus.Interactivity.EventHandling
             this._ct.Dispose();
             this._tcs = null;
             this._predicate = null;
-            this._collected.Clear();
-            this._collected = null;
+
+            if (this._collected != null)
+            {
+                this._collected.Clear();
+                this._collected = null;
+            }
         }
     }
 }

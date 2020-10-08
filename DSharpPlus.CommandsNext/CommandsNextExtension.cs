@@ -11,7 +11,9 @@ using DSharpPlus.CommandsNext.Entities;
 using DSharpPlus.CommandsNext.Exceptions;
 using DSharpPlus.Entities;
 using DSharpPlus.EventArgs;
+using Emzi0767.Utilities;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace DSharpPlus.CommandsNext
 {
@@ -146,13 +148,13 @@ namespace DSharpPlus.CommandsNext
 
             this.Client = client;
 
-            this._executed = new AsyncEvent<CommandExecutionEventArgs>(this.Client.EventErrorHandler, "COMMAND_EXECUTED");
-            this._error = new AsyncEvent<CommandErrorEventArgs>(this.Client.EventErrorHandler, "COMMAND_ERRORED");
+            this._executed = new AsyncEvent<CommandsNextExtension, CommandExecutionEventArgs>("COMMAND_EXECUTED", TimeSpan.Zero, this.Client.EventErrorHandler);
+            this._error = new AsyncEvent<CommandsNextExtension, CommandErrorEventArgs>("COMMAND_ERRORED", TimeSpan.Zero, this.Client.EventErrorHandler);
 
             if (this.Config.UseDefaultCommandHandler)
                 this.Client.MessageCreated += this.HandleCommandsAsync;
             else
-                this.Client.DebugLogger.LogMessage(LogLevel.Warning, "CommandsNext", "Default command handler is not attached. If this was intentional, you can ignore this message.", DateTime.Now);
+                this.Client.Logger.LogWarning(CommandsNextEvents.Misc, "Not attaching default command handler - if this is intentional, you can ignore this message");
 
             if (this.Config.EnableDefaultHelp)
             {
@@ -175,7 +177,7 @@ namespace DSharpPlus.CommandsNext
         #endregion
 
         #region Command Handling
-        private async Task HandleCommandsAsync(MessageCreateEventArgs e)
+        private async Task HandleCommandsAsync(DiscordClient sender, MessageCreateEventArgs e)
         {
             if (e.Author.IsBot) // bad bot
                 return;
@@ -208,7 +210,7 @@ namespace DSharpPlus.CommandsNext
             var ctx = this.CreateContext(e.Message, pfx.ToString(), cmd, args);
             if (cmd == null)
             {
-                await this._error.InvokeAsync(new CommandErrorEventArgs { Context = ctx, Exception = new CommandNotFoundException(fname) }).ConfigureAwait(false);
+                await this._error.InvokeAsync(this, new CommandErrorEventArgs { Context = ctx, Exception = new CommandNotFoundException(fname) }).ConfigureAwait(false);
                 return;
             }
 
@@ -327,13 +329,13 @@ namespace DSharpPlus.CommandsNext
                 var res = await cmd.ExecuteAsync(ctx).ConfigureAwait(false);
 
                 if (res.IsSuccessful)
-                    await this._executed.InvokeAsync(new CommandExecutionEventArgs { Context = res.Context }).ConfigureAwait(false);
+                    await this._executed.InvokeAsync(this, new CommandExecutionEventArgs { Context = res.Context }).ConfigureAwait(false);
                 else
-                    await this._error.InvokeAsync(new CommandErrorEventArgs { Context = res.Context, Exception = res.Exception }).ConfigureAwait(false);
+                    await this._error.InvokeAsync(this, new CommandErrorEventArgs { Context = res.Context, Exception = res.Exception }).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
-                await this._error.InvokeAsync(new CommandErrorEventArgs { Context = ctx, Exception = ex }).ConfigureAwait(false);
+                await this._error.InvokeAsync(this, new CommandErrorEventArgs { Context = ctx, Exception = ex }).ConfigureAwait(false);
             }
             finally
             {
@@ -937,32 +939,44 @@ namespace DSharpPlus.CommandsNext
         }
         #endregion
 
+        #region Helpers
+        /// <summary>
+        /// Gets the configuration-specific string comparer. This returns <see cref="StringComparer.Ordinal"/> or <see cref="StringComparer.OrdinalIgnoreCase"/>, 
+        /// depending on whether <see cref="CommandsNextConfiguration.CaseSensitive"/> is set to <see langword="true"/> or <see langword="false"/>.
+        /// </summary>
+        /// <returns>A string comparer.</returns>
+        internal IEqualityComparer<string> GetStringComparer()
+            => this.Config.CaseSensitive
+                ? StringComparer.Ordinal
+                : StringComparer.OrdinalIgnoreCase;
+        #endregion
+
         #region Events
         /// <summary>
         /// Triggered whenever a command executes successfully.
         /// </summary>
-        public event AsyncEventHandler<CommandExecutionEventArgs> CommandExecuted
+        public event AsyncEventHandler<CommandsNextExtension, CommandExecutionEventArgs> CommandExecuted
         {
             add { this._executed.Register(value); }
             remove { this._executed.Unregister(value); }
         }
-        private AsyncEvent<CommandExecutionEventArgs> _executed;
+        private AsyncEvent<CommandsNextExtension, CommandExecutionEventArgs> _executed;
 
         /// <summary>
         /// Triggered whenever a command throws an exception during execution.
         /// </summary>
-        public event AsyncEventHandler<CommandErrorEventArgs> CommandErrored
+        public event AsyncEventHandler<CommandsNextExtension, CommandErrorEventArgs> CommandErrored
         {
             add { this._error.Register(value); }
             remove { this._error.Unregister(value); }
         }
-        private AsyncEvent<CommandErrorEventArgs> _error;
+        private AsyncEvent<CommandsNextExtension, CommandErrorEventArgs> _error;
 
         private Task OnCommandExecuted(CommandExecutionEventArgs e)
-            => this._executed.InvokeAsync(e);
+            => this._executed.InvokeAsync(this, e);
 
         private Task OnCommandErrored(CommandErrorEventArgs e)
-            => this._error.InvokeAsync(e);
+            => this._error.InvokeAsync(this, e);
         #endregion
     }
 }

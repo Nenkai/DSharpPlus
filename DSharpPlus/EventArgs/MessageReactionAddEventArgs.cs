@@ -8,7 +8,7 @@ namespace DSharpPlus.EventArgs
     public class MessageReactionAddEventArgs : DiscordEventArgs
     {
         /// <summary>
-        /// Gets the message for which the update occured.
+        /// Gets the message for which the update occurred.
         /// </summary>
         public DiscordMessage Message { get; internal set; }
 
@@ -24,6 +24,7 @@ namespace DSharpPlus.EventArgs
 
         /// <summary>
         /// Gets the user who created the reaction.
+        /// <para>This can be cast to a <see cref="DiscordMember"/> if the reaction was in a guild.</para>
         /// </summary>
         public DiscordUser User { get; internal set; }
 
@@ -37,6 +38,6 @@ namespace DSharpPlus.EventArgs
         /// </summary>
         public DiscordEmoji Emoji { get; internal set; }
 
-        internal MessageReactionAddEventArgs(DiscordClient client) : base(client) { }
+        internal MessageReactionAddEventArgs() : base() { }
     }
 }
